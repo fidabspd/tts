@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 
@@ -251,11 +252,29 @@ class Transformer(nn.Module):
         )
         self.pad_idx = pad_idx
 
-    def create_padding_mask(self, key, for_target=False):
-        mask = (key != self.pad_idx).unsqueeze(1).unsqueeze(2)
-        if for_target:
-            key_len = key.shape[1]
-            target_sub_mask = torch.tril(torch.ones((key_len, key_len), device = self.device)).bool()
+    def create_padding_mask(self, key, for_speech=False):
+
+        def or_for_iter(it):
+            for i in it:
+                if i:
+                    return torch.BoolTensor([True])
+            return torch.BoolTensor([False])
+
+        batch_size = key.shape[0]
+        key_len = key.shape[1]
+        if not for_speech:
+            mask = (key != self.pad_idx).unsqueeze(1).unsqueeze(2)
+        else:
+            speech_without_sos = key[..., 1:, :]
+            speech_not_pad_np = (speech_without_sos != self.pad_idx).detach().cpu().numpy()
+            speech_not_pad_np = np.apply_along_axis(or_for_iter, -1, speech_not_pad_np)
+            speech_with_sos = np.concatenate([
+                    np.array([True]*batch_size).reshape((batch_size, 1, 1)),
+                    speech_not_pad_np
+            ], axis=1)
+            mask = torch.BoolTensor(speech_with_sos).squeeze()\
+                    .unsqueeze(1).unsqueeze(2).to(self.device)
+            target_sub_mask = torch.tril(torch.ones((key_len, key_len))).bool()
             mask = mask & target_sub_mask
         return mask  # [batch_size, 1, 1, key_len]
 
