@@ -8,6 +8,7 @@ from jamo import hangul_to_jamo
 
 import librosa
 
+import torch
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
 
 
@@ -72,7 +73,8 @@ def get_mel(fpath, sr, n_mels, n_fft, hop_length, win_length):
 # Dataset
 class TextMelDataset(Dataset):
     
-    def __init__(self, scripts, audio_path, sr, n_mels, n_fft, hop_length, win_length):
+    def __init__(self, scripts, audio_path, sr, n_mels, n_fft,
+                 hop_length, win_length):
         self.scripts = scripts
         self.audio_path = audio_path
         self.sr = sr
@@ -90,16 +92,23 @@ class TextMelDataset(Dataset):
     def __getitem__(self, idx):
         # script
         script = self.scripts[idx]
-        # tokens = tokenize(script, as_id=True)
+        tokens = tokenize(script, as_id=True)
         
         # audio
         fpath = os.path.join(self.audio_path, str(idx+1)+'.wav')
         mel = get_mel(fpath, self.sr, self.n_mels, self.n_fft, self.hop_length, self.win_length)
+        mel = np.concatenate([
+                np.zeros([1, self.n_mels], np.float32),
+                mel,
+                np.zeros([1, self.n_mels], np.float32)
+        ], axis=0)  # <sos> + mel + <eos>
         
-        return script, mel
+        return {'text': tokens, 'speech': mel, 'text_len': len(tokens), 'speech_len': len(mel)}
 
 
-def get_single_speaker_dataset(speaker, wav_path, script_path, sr, n_mels, n_fft, hop_length, win_length):
+def get_single_speaker_dataset(speaker, wav_path, script_path,
+                               sr, n_mels, n_fft, hop_length, win_length):
+
     data_list = get_data_list(speaker, wav_path)
 
     concat_dataset = []
@@ -110,8 +119,30 @@ def get_single_speaker_dataset(speaker, wav_path, script_path, sr, n_mels, n_fft
         script = load_script(script_path, sheet_name)
         audio_path = os.path.join(wav_path, speaker+'_'+sheet_name)
         
-        text_mel_dataset = TextMelDataset(script, audio_path, sr, n_mels, n_fft, hop_length, win_length)
+        text_mel_dataset = TextMelDataset(
+            script, audio_path, sr, n_mels, n_fft, hop_length, win_length)
         concat_dataset.append(text_mel_dataset)
         print(f'{sheet_name} Done!')
         
     return ConcatDataset(concat_dataset)
+
+
+def pad_tokens(tokens, max_len):
+    len_tokens = len(tokens)
+    return np.pad(tokens, (0, max_len-len_tokens))
+
+
+def pad_mel(mel, max_len):
+    len_mel = len(mel)
+    return np.pad(mel, ((0, max_len-len_mel), (0, 0)))
+
+
+def collate_fn(batch):
+
+    max_text_len = max([data['text_len'] for data in batch])
+    max_speech_len = max([data['speech_len'] for data in batch])
+
+    text = np.stack([pad_tokens(data['text'], max_text_len) for data in batch])
+    speech = np.stack([pad_mel(data['speech'], max_speech_len) for data in batch])
+
+    return torch.LongTensor(text), torch.FloatTensor(speech)
