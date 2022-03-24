@@ -148,8 +148,8 @@ class DecoderLayer(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, input_dim, hidden_dim, n_layers, n_heads, pf_dim,
-                 dropout_ratio, device, max_seq_len=100):
+    def __init__(self, input_dim, max_seq_len, hidden_dim, n_layers, n_heads, pf_dim,
+                 dropout_ratio, device):
         # input_dim = encoder vocab_size
         super().__init__()
         self.device = device
@@ -198,8 +198,8 @@ class DecoderPrenet(nn.Module):
 
 class MelDecoder(nn.Module):
     
-    def __init__(self, n_mels, hidden_dim, n_layers, n_heads, pf_dim,
-                 dropout_ratio, device, max_seq_len=100):
+    def __init__(self, n_mels, max_seq_len, hidden_dim, n_layers, n_heads, pf_dim,
+                 dropout_ratio, device):
         super().__init__()
         self.device = device
         self.scale = torch.sqrt(torch.FloatTensor([hidden_dim])).to(device)
@@ -243,12 +243,12 @@ class Transformer(nn.Module):
         self.speech_seq_len = speech_seq_len
 
         self.encoder = Encoder(
-            input_dim, hidden_dim, n_layers, n_heads, pf_dim,
-            dropout_ratio, device, text_seq_len
+            input_dim, text_seq_len, hidden_dim, n_layers, n_heads, pf_dim,
+            dropout_ratio, device
         )
         self.decoder = MelDecoder(
-            n_mels, hidden_dim, n_layers, n_heads, pf_dim,
-            dropout_ratio, device, speech_seq_len
+            n_mels, speech_seq_len, hidden_dim, n_layers, n_heads, pf_dim,
+            dropout_ratio, device
         )
         self.pad_idx = pad_idx
 
