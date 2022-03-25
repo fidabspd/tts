@@ -1,6 +1,6 @@
 {
     "sr": 22050,
-    "frame_shift": 0.0125,
+    "frame_stride": 0.0125,
     "frame_length": 0.05,
     "preemphasis": 0.97,
     "n_fft": 2048,
