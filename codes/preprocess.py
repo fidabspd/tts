@@ -75,7 +75,7 @@ def normalize_en(text):
 def int_to_kor_under_4d(num):
     
     num = str(num)
-    if num == '0000':
+    if num in ['0', '00', '000', '0000']:
         return ''
     num_to_kor_list = [''] + list('일이삼사오육칠팔구')
     unit_to_kor_list = [''] + list('십백천')
