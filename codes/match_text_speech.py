@@ -22,7 +22,7 @@ def main():
     WAV_PATH = os.path.join(DATA_PATH, 'wav')
     SCRIPT_PATH = os.path.join(DATA_PATH, 'scripts.xlsx')
     LOG_PATH = '../logs/'
-    THRESHOLD = 0.85
+    THRESHOLD = 0.5
 
     logging.basicConfig(
         filename = os.path.join(LOG_PATH, 'match.log'),
