@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+from configs import *
 from preprocess import *
 from transformer_torch import *
 
@@ -17,35 +18,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument('--configs_file_name', type=str, default='./hyperparams.json')
-
-    parser.add_argument('--wav_path', type=str, default='../data/wav/')
-    parser.add_argument('--speaker', type=str, default='여1')
-    parser.add_argument('--script_file_name', type=str, default='../data/scripts.xlsx')
-    parser.add_argument('--graph_log_path', type=str, default='../logs/graph/')
-    parser.add_argument('--model_path', type=str, default='../model/')
-    parser.add_argument('--model_name', type=str, default='single_speaker_tts')
-    parser.add_argument('--train_log_path', type=str, default='../logs/train_logs/')
-
-    parser.add_argument('--text_seq_len', type=int, default=2000)
-    parser.add_argument('--speech_seq_len', type=int, default=2000)
-    parser.add_argument('--n_layers', type=int, default=3)
-    parser.add_argument('--hidden_dim', type=int, default=256)
-    parser.add_argument('--n_heads', type=int, default=8)
-    parser.add_argument('--pf_dim', type=int, default=512)
-    parser.add_argument('--dropout_ratio', type=float, default=0.2)
-
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--learning_rate', type=float, default=5e-4)
-    parser.add_argument('--clip', type=int, default=1)
-    parser.add_argument('--n_epochs', type=int, default=50)
-    parser.add_argument('--es_patience', type=int, default=5)
-    parser.add_argument('--validate', type=bool, default=False)
-
-    parser.add_argument('--sr', type=int, default=22050)
-    parser.add_argument('--frame_shift', type=int, default=0.0125)
-    parser.add_argument('--frame_length', type=int, default=0.05)
-    parser.add_argument('--n_fft', type=int, default=2048)
-    parser.add_argument('--n_mels', type=int, default=80)
 
     return parser.parse_args()
 
@@ -92,10 +64,9 @@ def train_one_epoch(model, dl, optimizer, criterion, clip, device, n_check=5):
     for b, (inp, tar) in enumerate(dl):
         inp, tar = inp.to(device), tar.to(device)
 
-        outputs, _ = model(inp, tar[:,:-1])
+        outputs, _, _ = model(inp, tar[:,:-1])
 
-        output_dim = outputs.shape[-1]
-        outputs = outputs.contiguous().view(-1, output_dim)
+        outputs = outputs.contiguous().view(-1)
         tar = tar[:,1:].contiguous().view(-1)
         loss = criterion(outputs, tar)
         train_loss += loss.item()/n_data
@@ -122,7 +93,7 @@ def evaluate(model, dl, criterion, device):
     with torch.no_grad():
         for inp, tar in dl:
             inp, tar = inp.to(device), tar.to(device)
-            outputs, _ = model(inp, tar[:,:-1])
+            outputs, _, _ = model(inp, tar[:,:-1])
 
             output_dim = outputs.shape[-1]
 
@@ -189,45 +160,12 @@ def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
 
 def main(args):
 
-    CONFIGS_FILE_NAME = args.configs_file_name
-    with open(CONFIGS_FILE_NAME) as f:
-        configs = json.load(f)
-    args_dict = vars(args)
-    args_dict = {key: args_dict[key] for key in args_dict.keys() if args_dict[key] is not None}
-    configs.update(args_dict)
-
-
-    WAV_PATH = configs['wav_path']
-    SPEAKER = configs['speaker']
-    SCRIPT_FILE_NAME = configs['script_file_name']
-    GRAPH_LOG_PATH = configs['graph_log_path']
-    MODEL_PATH = configs['model_path']
-    MODEL_NAME = configs['model_name']
-    TRAIN_LOG_PATH = configs['train_log_path']
-
-    TEXT_SEQ_LEN = configs['text_seq_len']
-    SPEECH_SEQ_LEN = configs['speech_seq_len']
-    N_LAYERS = configs['n_layers']
-    HIDDEN_DIM = configs['hidden_dim']
-    N_HEADS = configs['n_heads']
-    PF_DIM = configs['pf_dim']
-    DROPOUT_RATIO = configs['dropout_ratio']
-
-    SR = configs['sr']
-    FRAME_SHIFT = configs['frame_shift']
-    FRAME_LENGTH = configs['frame_length']
-    N_FFT = configs['n_fft']
-    N_MELS = configs['n_mels']
-    HOP_LENGTH = int(SR*FRAME_SHIFT)
-    WIN_LENGTH = int(SR*FRAME_LENGTH)
-
-    BATCH_SIZE = configs['batch_size']
-    LEARNING_RATE = configs['learning_rate']
-    CLIP = configs['clip']
-    N_EPOCHS = configs['n_epochs']
-    ES_PATIENCE = configs['es_patience']
-    VALIDATE = configs['validate']
-    PAD_IDX = 0
+    # CONFIGS_FILE_NAME = args.configs_file_name
+    # with open(CONFIGS_FILE_NAME) as f:
+    #     configs = json.load(f)
+    # args_dict = vars(args)
+    # args_dict = {key: args_dict[key] for key in args_dict.keys() if args_dict[key] is not None}
+    # configs.update(args_dict)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using device {device}')
@@ -239,7 +177,7 @@ def main(args):
 
     # Set model
     transformer = Transformer(
-        82, N_MELS, N_LAYERS, HIDDEN_DIM, N_HEADS, PF_DIM,
+        len(ALL_SYMBOLS), N_MELS, N_LAYERS, HIDDEN_DIM, N_HEADS, PF_DIM,
         TEXT_SEQ_LEN, SPEECH_SEQ_LEN, PAD_IDX, DROPOUT_RATIO, device
     ).to(device)
 
@@ -252,7 +190,7 @@ def main(args):
 
     # Train model
     optimizer = torch.optim.Adam(transformer.parameters(), lr=LEARNING_RATE)
-    criterion = torch.nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD_IDX)
+    criterion = torch.nn.L1Loss(reduction='sum')
 
     if not VALIDATE:
         valid_dl = None
