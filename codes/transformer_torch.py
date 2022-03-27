@@ -24,6 +24,8 @@ class MultiHeadAttentionLayer(nn.Module):
 
         self.dropout = nn.Dropout(dropout_ratio)
 
+        self.device = device
+
     def split_heads(self, inputs, batch_size):
         inputs = inputs.view(batch_size, -1, self.n_heads, self.head_dim)
         # [batch_size, seq_len, n_heads, head_dim]
@@ -38,6 +40,7 @@ class MultiHeadAttentionLayer(nn.Module):
         # for tar self_attention: [batch_size, 1, query_len(tar)(=key_len(tar)), key_len(tar)(=query_len(tar))]
         # for encd_attention: [batch_size, 1, 1, key_len(inp)]
         if mask is not None:
+            mask = mask.to(self.device)
             energy = energy.masked_fill(mask==0, -1e10)  # key에 masking
             # `masked_fill`의 parameter로 받는 `mask==0`에 대해. 
             # - `energy`와 shape의 차원의 개수가 달라도 괜찮다. `energy`와 `mask==0`의 차원 개수중 더 많은 차원의 개수를 가지도록 자동으로 맞춘다.
@@ -215,6 +218,8 @@ class MelDecoder(nn.Module):
         self.mel_linear = nn.Linear(hidden_dim, n_mels)
         self.stop_linear = nn.Linear(hidden_dim, 1)
 
+        self.dropout = nn.Dropout(dropout_ratio)
+
     def forward(self, target, encd, target_mask, encd_mask):
         batch_size = target.shape[0]
         seq_len = target.shape[1]
@@ -228,7 +233,7 @@ class MelDecoder(nn.Module):
             outputs, attention = layer(outputs, encd, target_mask, encd_mask)
 
         mel_outputs = self.mel_linear(outputs)
-        stop_prob = nn.sigmoid(self.stop_linear(outputs))
+        stop_prob = torch.sigmoid(self.stop_linear(outputs))
 
         return mel_outputs, stop_prob, attention
         
@@ -273,7 +278,7 @@ class Transformer(nn.Module):
                     speech_not_pad_np
             ], axis=1)
             mask = torch.BoolTensor(speech_with_sos).squeeze()\
-                    .unsqueeze(1).unsqueeze(2).to(self.device)
+                    .unsqueeze(1).unsqueeze(2)
             target_sub_mask = torch.tril(torch.ones((key_len, key_len))).bool()
             mask = mask & target_sub_mask
         return mask  # [batch_size, 1, 1, key_len]
