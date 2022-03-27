@@ -1,10 +1,31 @@
 {
+    "wav_path": "../data/wav/",
+    "speaker": "여1",
+    "script_file_name": "../data/scripts.xlsx",
+    "graph_log_path": "../logs/graph/",
+    "model_path": "../model/",
+    "model_name": "single_speaker_tts",
+    "train_log_path": "../logs/train_logs/",
+
+    "text_seq_len": 2000,
+    "speech_seq_len": 2000,
+    "n_layers": 3,
+    "hidden_dim": 256,
+    "n_heads": 8,
+    "pf_dim": 512,
+    "dropout_ratio": 0.2,
+
+    "batch_size": 8,
+    "learning_rate": 5e-4,
+    "clip": 1,
+    "n_epochs": 15,
+    "es_patience": 5,
+    "validate": false,
+
     "sr": 22050,
-    "frame_stride": 0.0125,
+    "frame_shift": 0.0125,
     "frame_length": 0.05,
     "preemphasis": 0.97,
     "n_fft": 2048,
-    "n_mels": 80,
-    "max_db": 100,
-    "ref_db": 20
+    "n_mels": 80
 }

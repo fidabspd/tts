@@ -4,14 +4,37 @@ HYPERPARMAS_FILE_PATH = './hyperparams.json'
 with open(HYPERPARMAS_FILE_PATH) as f:
     configs = json.load(f)
 
+WAV_PATH = configs['wav_path']
+SPEAKER = configs['speaker']
+SCRIPT_FILE_NAME = configs['script_file_name']
+GRAPH_LOG_PATH = configs['graph_log_path']
+MODEL_PATH = configs['model_path']
+MODEL_NAME = configs['model_name']
+TRAIN_LOG_PATH = configs['train_log_path']
+
+TEXT_SEQ_LEN = configs['text_seq_len']
+SPEECH_SEQ_LEN = configs['speech_seq_len']
+N_LAYERS = configs['n_layers']
+HIDDEN_DIM = configs['hidden_dim']
+N_HEADS = configs['n_heads']
+PF_DIM = configs['pf_dim']
+DROPOUT_RATIO = configs['dropout_ratio']
+
 SR = configs['sr']
-FRAME_STRIDE = configs['frame_stride']
+FRAME_SHIFT = configs['frame_shift']
 FRAME_LENGTH = configs['frame_length']
-PREEMPHASIS = configs['preemphasis']
 N_FFT = configs['n_fft']
 N_MELS = configs['n_mels']
-MAX_DB = configs['max_db']
-REF_DB = configs['ref_db']
+HOP_LENGTH = int(SR*FRAME_SHIFT)
+WIN_LENGTH = int(SR*FRAME_LENGTH)
+
+BATCH_SIZE = configs['batch_size']
+LEARNING_RATE = configs['learning_rate']
+CLIP = configs['clip']
+N_EPOCHS = configs['n_epochs']
+ES_PATIENCE = configs['es_patience']
+VALIDATE = configs['validate']
+PAD_IDX = 0
 
 
 # For Text
