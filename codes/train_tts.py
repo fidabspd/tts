@@ -1,8 +1,7 @@
 import os
-import time
 import math
 import argparse
-import json
+from tqdm import tqdm
 
 import torch
 from torch.utils.data import DataLoader
@@ -45,23 +44,14 @@ def initialize_weights(m):
         nn.init.xavier_uniform_(m.weight.data)
 
 
-def train_one_epoch(model, dl, optimizer, criterion, clip, device, n_check=5):
+def train_one_epoch(model, dl, optimizer, criterion, clip, device):
 
     n_data = len(dl.dataset)
-    n_batch = len(dl)
-    batch_size = dl.batch_size
-    if n_check < 0:
-        print('n_check must be larger than 0. Adjust `n_check = 0`')
-        n_check = 0
-    if n_batch < n_check:
-        print(f'n_check should be smaller than n_batch. Adjust `n_check = {n_batch}`')
-        n_check = n_batch
-    if n_check:
-        check = [int(n_batch/n_check*(i+1)) for i in range(n_check)]
-    train_loss = 0
-
+    train_loss = 0; n_processed_data = 0
     model.train()
-    for b, (inp, tar) in enumerate(dl):
+    pbar = tqdm(dl)
+    for inp, tar in pbar:
+        n_processed_data += len(inp)
         inp, tar = inp.to(device), tar.to(device)
 
         outputs, _, _ = model(inp, tar[:,:-1])
@@ -76,10 +66,9 @@ def train_one_epoch(model, dl, optimizer, criterion, clip, device, n_check=5):
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
         optimizer.step()
 
-        if n_check and b+1 in check:
-            n_data_check = b*batch_size + len(inp)
-            train_loss_check = train_loss*n_data/n_data_check
-            print(f'loss: {train_loss_check:>10f}  [{n_data_check:>5d}/{n_data:>5d}]')
+        train_loss_tmp = train_loss*n_data/n_processed_data
+        pbar.set_description(
+            f'{n_processed_data:4d}/{n_data:4d} | loss: {train_loss_tmp:10.6f}')
 
     return train_loss
 
@@ -106,24 +95,17 @@ def evaluate(model, dl, criterion, device):
     return valid_loss
 
 
-def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
-
-
 def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
           criterion, clip, device, model_path, train_log_path, model_name='chatbot'):
     if train_log_path is not None:
         writer = SummaryWriter(train_log_path)
+    best_train_loss = float('inf')
     best_valid_loss = float('inf')
     best_epoch = 0
 
     for epoch in range(n_epochs):
-        start_time = time.time()
 
-        print('-'*30, f'\nEpoch: {epoch+1:02}', sep='')
+        print(f'Epoch: {epoch+1}/{n_epochs}')
         train_loss = train_one_epoch(model, train_dl, optimizer, criterion, clip, device)
         if train_log_path is not None:
             writer.add_scalar('train loss', train_loss, epoch)
@@ -132,8 +114,6 @@ def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
             if train_log_path is not None:
                 writer.add_scalar('valid loss', valid_loss, epoch)
 
-        end_time = time.time()
-        epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
         if valid_dl is not None:
             if valid_loss < best_valid_loss:
@@ -141,21 +121,24 @@ def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
                 print('Best!')
                 best_valid_loss = valid_loss
                 torch.save(model, model_path+model_name+'.pt')
+        else:
+            if train_loss < best_train_loss:
+                best_epoch = epoch
+                print('Best!')
+                best_train_loss = train_loss
+                torch.save(model, model_path+model_name+'.pt')
 
-        print(f'Train Loss: {train_loss:.3f}\nEpoch Time: {epoch_mins}m {epoch_secs}s')
         if valid_dl is not None:
-            print(f'Validation Loss: {valid_loss:.3f}')
+            print(f'Valid Loss: {valid_loss:.3f}')
 
-            if epoch-best_epoch >= es_patience:
-                print(f'\nBest Epoch: {best_epoch+1:02}')
-                print(f'\tBest Train Loss: {train_loss:.3f}')
-                print(f'\tBest Validation Loss: {valid_loss:.3f}')
-                break
+        if epoch-best_epoch >= es_patience:
+            print(f'\nBest Epoch: {best_epoch+1:02}')
+            print(f'\tBest Train Loss: {train_loss:.3f}')
+            print(f'\tBest Validation Loss: {valid_loss:.3f}')
+            break
     
     if train_log_path is not None:
         writer.close()
-    if valid_dl is None:
-        torch.save(model, model_path+model_name+'.pt')
 
 
 def main(args):
