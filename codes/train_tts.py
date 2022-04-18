@@ -44,6 +44,35 @@ def initialize_weights(m):
         nn.init.xavier_uniform_(m.weight.data)
 
 
+# def train_one_epoch(model, dl, optimizer, criterion, clip, device):
+
+#     n_data = len(dl.dataset)
+#     train_loss = 0
+#     n_processed_data = 0
+
+#     model.train()
+#     pbar = tqdm(dl)
+#     for batch in pbar:
+#         tensor_dict_to_device(batch, device)
+#         inputs, targets = batch['inputs'], batch['targets']
+#         n_processed_data += len(targets)
+
+#         pred = model(**inputs)
+#         loss = criterion(pred, targets)
+#         train_loss += loss.item()/n_data
+
+#         optimizer.zero_grad()
+#         loss.backward()
+#         nn.utils.clip_grad_norm_(model.parameters(), clip)
+#         optimizer.step()
+
+#         train_loss_tmp = train_loss*n_data/n_processed_data
+#         pbar.set_description(
+#             f'Train Loss: {train_loss_tmp:9.6f} | {n_processed_data:6d}/{n_data:6d} ')
+
+#     return train_loss
+
+
 def train_one_epoch(model, dl, optimizer, criterion, clip, device):
 
     n_data = len(dl.dataset)
@@ -73,6 +102,31 @@ def train_one_epoch(model, dl, optimizer, criterion, clip, device):
     return train_loss
 
 
+# def evaluate(model, dl, criterion, device):
+
+#     n_data = len(dl.dataset)
+#     valid_loss = 0
+#     n_processed_data = 0
+
+#     model.eval()
+#     pbar = tqdm(dl)
+#     with torch.no_grad():
+#         for batch in pbar:
+#             tensor_dict_to_device(batch, device)
+#             inputs, targets = batch['inputs'], batch['targets']
+#             n_processed_data += len(targets)
+            
+#             pred = model(**inputs)
+#             loss = criterion(pred, targets)
+#             valid_loss += loss.item()/n_data
+
+#             valid_loss_tmp = valid_loss*n_data/n_processed_data
+#             pbar.set_description(
+#                 f'Valid Loss: {valid_loss_tmp:9.6f} | {n_processed_data:6d}/{n_data:6d} ')
+
+#     return valid_loss
+
+
 def evaluate(model, dl, criterion, device):
     n_data = len(dl.dataset)
     
@@ -93,6 +147,42 @@ def evaluate(model, dl, criterion, device):
             valid_loss += loss.item()/n_data
 
     return valid_loss
+
+
+# def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
+#                 es_patience, clip, model_file_path, train_log_path, device):
+#     if train_log_path is not None:
+#         writer = SummaryWriter(train_log_path)
+#     best_train_loss = float('inf')
+#     best_valid_loss = float('inf')
+#     best_epoch = 0
+
+#     for epoch in range(n_epochs):
+
+#         print(f'Epoch: {epoch+1}/{n_epochs}')
+#         train_loss = train_one_epoch(model, train_dl, optimizer, criterion, clip, device)
+#         valid_loss = evaluate(model, valid_dl, criterion, device)
+#         if train_log_path is not None:
+#             writer.add_scalars('loss', {
+#                     'train_loss':train_loss,
+#                     'valid_loss':valid_loss,
+#                 }, epoch+1)
+
+#         if valid_loss < best_valid_loss:
+#             print('Best!\n')
+#             best_epoch = epoch
+#             best_train_loss = train_loss
+#             best_valid_loss = valid_loss
+#             torch.save(model, model_file_path)
+
+#         if epoch-best_epoch >= es_patience:
+#             print(f'\nBest Epoch: {best_epoch+1:02}')
+#             print(f'\tBest Train Loss: {best_train_loss:.3f}')
+#             print(f'\tBest Validation Loss: {best_valid_loss:.3f}')
+#             break
+    
+#     if train_log_path is not None:
+#         writer.close()
 
 
 def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
