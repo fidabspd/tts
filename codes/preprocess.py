@@ -1,18 +1,11 @@
-from locale import normalize
 import os
-
+import re
 import numpy as np
 import pandas as pd
-
-import re
 from jamo import hangul_to_jamo
-
 import librosa
 
-import torch
-from torch.utils.data import Dataset, ConcatDataset, DataLoader
-
-from configs import *
+import configs as cf
 
 
 
@@ -33,9 +26,9 @@ def tokenize(text, as_id=False):
     tokens = list(hangul_to_jamo(text))
 
     if as_id:
-        return [char_to_id[SOS]] + [char_to_id[token] for token in tokens] + [char_to_id[EOS]]
+        return [cf.char_to_id[cf.SOS]] + [cf.char_to_id[token] for token in tokens] + [cf.char_to_id[cf.EOS]]
     else:
-        return [SOS] + [token for token in tokens] + [EOS]
+        return [cf.SOS] + [token for token in tokens] + [cf.EOS]
 
 
 def normalize_en(text):
