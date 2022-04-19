@@ -144,37 +144,6 @@ def tensor_dict_to_device(tensor_dict, device):
             raise Exception(f'value of dict is not torch.Tensor. Found {type(v)}')
 
 
-def train_one_epoch(model, dl, optimizer, criterion, clip, device):
-
-    n_data = len(dl.dataset)
-    train_loss = 0
-    n_processed_data = 0
-
-    model.train()
-    pbar = tqdm(dl)
-    for batch in pbar:
-        tensor_dict_to_device(batch, device)
-        text_tokens, mel = batch['text_tokens'], batch['mel']
-        n_processed_data += len(mel)
-
-        mel_pred, _, _ = model(text_tokens, mel[:,:-1])
-        mel_pred = mel_pred.contiguous().view(-1)
-        mel = mel[:,1:].contiguous().view(-1)
-        loss = criterion(mel_pred, mel)
-        train_loss += loss.item()/n_data
-
-        optimizer.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()
-
-        train_loss_tmp = train_loss*n_data/n_processed_data
-        pbar.set_description(
-            f'Train Loss: {train_loss_tmp:9.6f} | {n_processed_data}/{n_data} ')
-
-    return train_loss
-
-
 def evaluate(model, dl, criterion, device):
 
     n_data = len(dl.dataset)
@@ -204,8 +173,54 @@ def evaluate(model, dl, criterion, device):
 
 def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
                 es_patience, clip, model_file_path, train_log_path, device):
-    if train_log_path is not None:
-        writer = SummaryWriter(train_log_path)
+
+    def train_one_epoch(model, dl, optimizer, criterion, clip, device):
+
+        nonlocal writer
+        nonlocal global_step
+
+        n_data = len(dl.dataset)
+        train_loss = 0
+        n_processed_data = 0
+
+        model.train()
+        pbar = tqdm(dl)
+        for batch in pbar:
+            tensor_dict_to_device(batch, device)
+            text_tokens, mel = batch['text_tokens'], batch['mel']
+            now_batch_len = len(mel)
+            n_processed_data += now_batch_len
+
+            mel_pred, _, _ = model(text_tokens, mel[:,:-1])
+            mel_pred = mel_pred.contiguous().view(-1)
+            mel = mel[:,1:].contiguous().view(-1)
+            loss = criterion(mel_pred, mel)
+            train_loss += loss.item()/n_data
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), clip)
+            optimizer.step()
+
+            train_loss_tmp = train_loss*n_data/n_processed_data
+            pbar.set_description(
+                f'Train Loss: {train_loss_tmp:9.6f} | {n_processed_data}/{n_data} ')
+
+            batch_loss = loss.item()/now_batch_len
+            writer.add_scalars(
+                'loss', {
+                    'batch': batch_loss,
+                }, global_step
+            )
+            
+            global_step += 1
+
+        return train_loss
+
+
+    writer = SummaryWriter(train_log_path)
+    global_step = 0
+
     best_train_loss = float('inf')
     best_valid_loss = float('inf')
     best_epoch = 0
@@ -215,12 +230,14 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
         print(f'Epoch: {epoch+1}/{n_epochs}')
         train_loss = train_one_epoch(model, train_dl, optimizer, criterion, clip, device)
         valid_loss = evaluate(model, valid_dl, criterion, device)
-        if train_log_path is not None:
-            writer.add_scalars('loss', {
-                    'train_loss':train_loss,
-                    'valid_loss':valid_loss,
-                }, epoch+1)
+        writer.add_scalars(
+            'loss', {
+                'train': train_loss,
+                'valid': valid_loss,
+            }, global_step
+        )
 
+        # Best model
         if valid_loss < best_valid_loss:
             print('Best!\n')
             best_epoch = epoch
@@ -228,14 +245,14 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
             best_valid_loss = valid_loss
             torch.save(model, model_file_path)
 
+        # Early stop
         if epoch-best_epoch >= es_patience:
             print(f'\nBest Epoch: {best_epoch+1:02}')
             print(f'\tBest Train Loss: {best_train_loss:.3f}')
             print(f'\tBest Validation Loss: {best_valid_loss:.3f}')
             break
     
-    if train_log_path is not None:
-        writer.close()
+    writer.close()
 
 
 def main():
