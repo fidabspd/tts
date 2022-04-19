@@ -3,8 +3,7 @@
     "speaker": "여1",
     "script_file_name": "../data/scripts.xlsx",
     "graph_log_path": "../logs/graph/",
-    "model_path": "../model/",
-    "model_name": "single_speaker_tts",
+    "model_file_path": "../model/single_speaker_tts.pt",
     "train_log_path": "../logs/train_logs/",
 
     "text_seq_len": 2000,
@@ -15,12 +14,12 @@
     "pf_dim": 512,
     "dropout_ratio": 0.2,
 
+    "trainset_ratio": 0.85,
     "batch_size": 8,
     "learning_rate": 5e-4,
     "clip": 1,
     "n_epochs": 15,
     "es_patience": 5,
-    "validate": false,
 
     "sr": 22050,
     "frame_shift": 0.0125,

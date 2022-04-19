@@ -8,8 +8,7 @@ WAV_PATH = configs['wav_path']
 SPEAKER = configs['speaker']
 SCRIPT_FILE_NAME = configs['script_file_name']
 GRAPH_LOG_PATH = configs['graph_log_path']
-MODEL_PATH = configs['model_path']
-MODEL_NAME = configs['model_name']
+MODEL_FILE_PATH = configs['model_file_path']
 TRAIN_LOG_PATH = configs['train_log_path']
 
 TEXT_SEQ_LEN = configs['text_seq_len']
@@ -28,13 +27,14 @@ N_MELS = configs['n_mels']
 HOP_LENGTH = int(SR*FRAME_SHIFT)
 WIN_LENGTH = int(SR*FRAME_LENGTH)
 
+TRAINSET_RATIO = configs['trainset_ratio']
 BATCH_SIZE = configs['batch_size']
 LEARNING_RATE = configs['learning_rate']
 CLIP = configs['clip']
 N_EPOCHS = configs['n_epochs']
 ES_PATIENCE = configs['es_patience']
-VALIDATE = configs['validate']
 PAD_IDX = 0
+
 
 
 # For Text
