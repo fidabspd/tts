@@ -1,25 +1,110 @@
 import os
-import time
-import math
-import argparse
-import json
+import collections
+from tqdm import tqdm
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, ConcatDataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 
-from configs import *
+import configs as cf
 from preprocess import *
 from transformer_torch import *
 
 
-def parse_args():
-    desc = "SET CONFIGS"
-    parser = argparse.ArgumentParser(description=desc)
+class TextMelDataset(Dataset):
+    
+    def __init__(self, script_path, sheet_name, audio_path, sr, n_mels, n_fft,
+                 hop_length, win_length):
+        self.scripts = load_script(script_path, sheet_name)
+        self.audio_path = audio_path
+        self.sr = sr
+        self.n_mels = n_mels
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.win_length = win_length
 
-    parser.add_argument('--configs_file_name', type=str, default='./hyperparams.json')
+        self.audio_file_list = os.listdir(self.audio_path)
+    
+    def __len__(self):
+        return len(self.audio_file_list)
+    
+    def __getitem__(self, idx):
+        file_name = self.audio_file_list[idx]
+        file_num = int(file_name[:-4])
 
-    return parser.parse_args()
+        # script
+        script = self.scripts.query(f'Index == {file_num}')['대사'].tolist()[0]
+        script = normalize_text(script)
+        text_tokens = tokenize(script, as_id=True)
+        
+        # audio
+        fpath = os.path.join(self.audio_path, str(file_num)+'.wav')
+        mel = get_mel(fpath, self.sr, self.n_mels, self.n_fft, self.hop_length, self.win_length)
+        mel = np.concatenate([
+                np.zeros([1, self.n_mels], np.float32),
+                mel,
+                np.zeros([2, self.n_mels], np.float32)
+        ], axis=0)  # <sos> + mel + <eos>
+        
+        return {
+            'text_tokens': text_tokens, 'mel': mel,
+            'text_tokens_len': len(text_tokens), 'mel_len': len(mel)
+        }
+
+
+def get_single_speaker_dataset(speaker, wav_path, script_path,
+                               sr, n_mels, n_fft, hop_length, win_length):
+
+    data_list = get_data_list(speaker, wav_path)
+
+    concat_dataset = []
+    print(f'Loading {data_list} ...')
+    for sheet_name in data_list:
+        sheet_name = sheet_name.split('_')[1]
+        
+        audio_path = os.path.join(wav_path, speaker+'_'+sheet_name)
+        
+        text_mel_dataset = TextMelDataset(
+            script_path, sheet_name, audio_path, sr, n_mels, n_fft,
+            hop_length, win_length)
+        concat_dataset.append(text_mel_dataset)
+        print(f'{sheet_name} Done!')
+        
+    return ConcatDataset(concat_dataset)
+
+
+def collate_fn(batch):
+
+    def pad_tokens(text_tokens, max_len):
+        len_tokens = len(text_tokens)
+        return np.pad(text_tokens, (0, max_len-len_tokens))
+
+    def pad_mel(mel, max_len):
+        len_mel = len(mel)
+        return np.pad(mel, ((0, max_len-len_mel), (0, 0)))
+
+    max_text_len = max([data['text_tokens_len'] for data in batch])
+    max_speech_len = max([data['mel_len'] for data in batch])
+
+    text_tokens = np.stack([
+        pad_tokens(data['text_tokens'], max_text_len)
+        for data in batch
+    ])
+    mel = np.stack([
+        pad_mel(data['mel'], max_speech_len)
+        for data in batch
+    ])
+
+    return {
+        'text_tokens': torch.LongTensor(text_tokens),
+        'mel': torch.FloatTensor(mel)
+    }
+
+
+def get_dl_by_ds(ds, batch_size, shuffle=False):
+    dl = DataLoader(
+        ds, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    return dl
 
 
 def create_tensorboard_graph(model, inputs, path):
@@ -45,170 +130,160 @@ def initialize_weights(m):
         nn.init.xavier_uniform_(m.weight.data)
 
 
-def train_one_epoch(model, dl, optimizer, criterion, clip, device, n_check=5):
+def tensor_dict_to_device(tensor_dict, device):
+    
+    assert isinstance(tensor_dict, collections.abc.Mapping),\
+        f'tensor_dict is not dicts. Found {type(tensor_dict)}.'
+    
+    for k, v in tensor_dict.items():
+        if isinstance(v, collections.abc.Mapping):
+            tensor_dict_to_device(v, device)
+        elif isinstance(v, torch.Tensor):
+            tensor_dict[k] = v.to(device)
+        else:
+            raise Exception(f'value of dict is not torch.Tensor. Found {type(v)}')
+
+
+def train_one_epoch(model, dl, optimizer, criterion, clip, device):
 
     n_data = len(dl.dataset)
-    n_batch = len(dl)
-    batch_size = dl.batch_size
-    if n_check < 0:
-        print('n_check must be larger than 0. Adjust `n_check = 0`')
-        n_check = 0
-    if n_batch < n_check:
-        print(f'n_check should be smaller than n_batch. Adjust `n_check = {n_batch}`')
-        n_check = n_batch
-    if n_check:
-        check = [int(n_batch/n_check*(i+1)) for i in range(n_check)]
     train_loss = 0
+    n_processed_data = 0
 
     model.train()
-    for b, (inp, tar) in enumerate(dl):
-        inp, tar = inp.to(device), tar.to(device)
+    pbar = tqdm(dl)
+    for batch in pbar:
+        tensor_dict_to_device(batch, device)
+        text_tokens, mel = batch['text_tokens'], batch['mel']
+        n_processed_data += len(mel)
 
-        outputs, _, _ = model(inp, tar[:,:-1])
-
-        outputs = outputs.contiguous().view(-1)
-        tar = tar[:,1:].contiguous().view(-1)
-        loss = criterion(outputs, tar)
+        mel_pred, _, _ = model(text_tokens, mel[:,:-1])
+        mel_pred = mel_pred.contiguous().view(-1)
+        mel = mel[:,1:].contiguous().view(-1)
+        loss = criterion(mel_pred, mel)
         train_loss += loss.item()/n_data
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+        nn.utils.clip_grad_norm_(model.parameters(), clip)
         optimizer.step()
 
-        if n_check and b+1 in check:
-            n_data_check = b*batch_size + len(inp)
-            train_loss_check = train_loss*n_data/n_data_check
-            print(f'loss: {train_loss_check:>10f}  [{n_data_check:>5d}/{n_data:>5d}]')
+        train_loss_tmp = train_loss*n_data/n_processed_data
+        pbar.set_description(
+            f'Train Loss: {train_loss_tmp:9.6f} | {n_processed_data}/{n_data} ')
 
     return train_loss
 
 
 def evaluate(model, dl, criterion, device):
+
     n_data = len(dl.dataset)
-    
     valid_loss = 0
+    n_processed_data = 0
 
     model.eval()
+    pbar = tqdm(dl)
     with torch.no_grad():
-        for inp, tar in dl:
-            inp, tar = inp.to(device), tar.to(device)
-            outputs, _, _ = model(inp, tar[:,:-1])
-
-            output_dim = outputs.shape[-1]
-
-            outputs = outputs.contiguous().view(-1, output_dim)
-            tar = tar[:,1:].contiguous().view(-1)
-            loss = criterion(outputs, tar)
-
+        for batch in pbar:
+            tensor_dict_to_device(batch, device)
+            text_tokens, mel = batch['text_tokens'], batch['mel']
+            n_processed_data += len(mel)
+            
+            mel_pred, _, _ = model(text_tokens, mel[:,:-1])
+            mel_pred = mel_pred.contiguous().view(-1)
+            mel = mel[:,1:].contiguous().view(-1)
+            loss = criterion(mel_pred, mel)
             valid_loss += loss.item()/n_data
+
+            valid_loss_tmp = valid_loss*n_data/n_processed_data
+            pbar.set_description(
+                f'Valid Loss: {valid_loss_tmp:9.6f} | {n_processed_data}/{n_data} ')
 
     return valid_loss
 
 
-def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
-
-
-def train(model, n_epochs, es_patience, train_dl, valid_dl, optimizer,
-          criterion, clip, device, model_path, train_log_path, model_name='chatbot'):
+def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
+                es_patience, clip, model_file_path, train_log_path, device):
     if train_log_path is not None:
         writer = SummaryWriter(train_log_path)
+    best_train_loss = float('inf')
     best_valid_loss = float('inf')
     best_epoch = 0
 
     for epoch in range(n_epochs):
-        start_time = time.time()
 
-        print('-'*30, f'\nEpoch: {epoch+1:02}', sep='')
+        print(f'Epoch: {epoch+1}/{n_epochs}')
         train_loss = train_one_epoch(model, train_dl, optimizer, criterion, clip, device)
+        valid_loss = evaluate(model, valid_dl, criterion, device)
         if train_log_path is not None:
-            writer.add_scalar('train loss', train_loss, epoch)
-        if valid_dl is not None:
-            valid_loss = evaluate(model, valid_dl, criterion, device)
-            if train_log_path is not None:
-                writer.add_scalar('valid loss', valid_loss, epoch)
+            writer.add_scalars('loss', {
+                    'train_loss':train_loss,
+                    'valid_loss':valid_loss,
+                }, epoch+1)
 
-        end_time = time.time()
-        epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+        if valid_loss < best_valid_loss:
+            print('Best!\n')
+            best_epoch = epoch
+            best_train_loss = train_loss
+            best_valid_loss = valid_loss
+            torch.save(model, model_file_path)
 
-        if valid_dl is not None:
-            if valid_loss < best_valid_loss:
-                best_epoch = epoch
-                print('Best!')
-                best_valid_loss = valid_loss
-                torch.save(model, model_path+model_name+'.pt')
-
-        print(f'Train Loss: {train_loss:.3f}\nEpoch Time: {epoch_mins}m {epoch_secs}s')
-        if valid_dl is not None:
-            print(f'Validation Loss: {valid_loss:.3f}')
-
-            if epoch-best_epoch >= es_patience:
-                print(f'\nBest Epoch: {best_epoch+1:02}')
-                print(f'\tBest Train Loss: {train_loss:.3f}')
-                print(f'\tBest Validation Loss: {valid_loss:.3f}')
-                break
+        if epoch-best_epoch >= es_patience:
+            print(f'\nBest Epoch: {best_epoch+1:02}')
+            print(f'\tBest Train Loss: {best_train_loss:.3f}')
+            print(f'\tBest Validation Loss: {best_valid_loss:.3f}')
+            break
     
     if train_log_path is not None:
         writer.close()
-    if valid_dl is None:
-        torch.save(model, model_path+model_name+'.pt')
 
 
-def main(args):
-
-    # CONFIGS_FILE_NAME = args.configs_file_name
-    # with open(CONFIGS_FILE_NAME) as f:
-    #     configs = json.load(f)
-    # args_dict = vars(args)
-    # args_dict = {key: args_dict[key] for key in args_dict.keys() if args_dict[key] is not None}
-    # configs.update(args_dict)
+def main():
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using device {device}')
 
-    # Load data
-    ds = get_single_speaker_dataset(
-        SPEAKER, WAV_PATH, SCRIPT_FILE_NAME, SR, N_MELS, N_FFT, HOP_LENGTH, WIN_LENGTH)
-    train_dl = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
+    # Set Dataset
+    full_ds = get_single_speaker_dataset(
+        cf.SPEAKER, cf.WAV_PATH, cf.SCRIPT_FILE_NAME,
+        cf.SR, cf.N_MELS, cf.N_FFT, cf.HOP_LENGTH, cf.WIN_LENGTH
+    )
+
+    # Split train, valid
+    data_length = len(full_ds)
+    train_ds_len = int(data_length*cf.TRAINSET_RATIO)
+    valid_ds_len = data_length - train_ds_len
+    train_ds, valid_ds = random_split(full_ds, [train_ds_len, valid_ds_len])
+
+    # Set DataLoader
+    train_dl = get_dl_by_ds(train_ds, cf.BATCH_SIZE, shuffle=True)
+    valid_dl = get_dl_by_ds(valid_ds, cf.BATCH_SIZE, shuffle=False)
 
     # Set model
     transformer = Transformer(
-        len(ALL_SYMBOLS), N_MELS, N_LAYERS, HIDDEN_DIM, N_HEADS, PF_DIM,
-        TEXT_SEQ_LEN, SPEECH_SEQ_LEN, PAD_IDX, DROPOUT_RATIO, device
+        len(cf.ALL_SYMBOLS), cf.N_MELS, cf.N_LAYERS, cf.HIDDEN_DIM,
+        cf.N_HEADS, cf.PF_DIM, cf.TEXT_SEQ_LEN, cf.SPEECH_SEQ_LEN,
+        cf.PAD_IDX, cf.DROPOUT_RATIO, device
     ).to(device)
-
     print(f'# of trainable parameters: {count_parameters(transformer):,}')
     transformer.apply(initialize_weights)
 
-    inp, tar = iter(train_dl).next()
-    inp, tar = inp.to(device), tar.to(device)
-    create_tensorboard_graph(transformer, (inp, tar), GRAPH_LOG_PATH)
+    # Tensorboard graph file
+    sample_data = iter(train_dl).next()
+    tensor_dict_to_device(sample_data, device)
+    text_tokens, mel = sample_data['text_tokens'], sample_data['mel']
+    create_tensorboard_graph(transformer, (text_tokens, mel[:,:-1]), cf.GRAPH_LOG_PATH)
 
     # Train model
-    optimizer = torch.optim.Adam(transformer.parameters(), lr=LEARNING_RATE)
-    criterion = torch.nn.L1Loss(reduction='sum')
-
-    if not VALIDATE:
-        valid_dl = None
-    train(
-        transformer, N_EPOCHS, ES_PATIENCE, train_dl, valid_dl,
-        optimizer, criterion, CLIP, device, MODEL_PATH, TRAIN_LOG_PATH, MODEL_NAME
+    optimizer = torch.optim.Adam(transformer.parameters(), lr=cf.LEARNING_RATE)
+    criterion = nn.L1Loss(reduction='sum')
+    train_model(
+        transformer, train_dl, valid_dl, optimizer, criterion, cf.N_EPOCHS,
+        cf.ES_PATIENCE, cf.CLIP, cf.MODEL_FILE_PATH, cf.TRAIN_LOG_PATH, device
     )
 
-    if VALIDATE:
-        transformer = torch.load(MODEL_PATH+MODEL_NAME+'.pt')
-        valid_loss = evaluate(transformer, valid_dl, criterion, device)
-        print(f'Valid Loss: {valid_loss:.3f} | Valid PPL: {math.exp(valid_loss):.3f}')
 
 
 if __name__ == '__main__':
 
-    args = parse_args()
-    if args is None:
-        exit()
-
-    main(args)
+    main()

@@ -7,6 +7,12 @@ model/
 
 Untitled*
 
+# sample audio
+audio_sample/
+
 # reference
 MultiSpeech: Multi-Speaker Text to Speech with Transformer.pdf
 Neural Speech Synthesis with Transformer Network.pdf
+
+# temporarily
+codes/imp_codes/
