@@ -228,7 +228,7 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
 
     for epoch in range(n_epochs):
 
-        print(f'Epoch: {epoch+1}/{n_epochs}')
+        print(f'\nEpoch: {epoch+1}/{n_epochs}')
         train_loss = train_one_epoch(model, train_dl, optimizer, criterion, clip, device)
         valid_loss = evaluate(model, valid_dl, criterion, device)
         writer.add_scalars(
@@ -240,7 +240,7 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
 
         # Best model
         if valid_loss < best_valid_loss:
-            print('Best!\n')
+            print('Best!')
             best_epoch = epoch
             best_train_loss = train_loss
             best_valid_loss = valid_loss
@@ -248,11 +248,12 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
 
         # Early stop
         if epoch-best_epoch >= es_patience:
-            print(f'\nBest Epoch: {best_epoch+1:02}')
-            print(f'\tBest Train Loss: {best_train_loss:.3f}')
-            print(f'\tBest Valid Loss: {best_valid_loss:.3f}')
             break
     
+    print(f'\nBest Epoch: {best_epoch+1:02}')
+    print(f'\tBest Train Loss: {best_train_loss:.3f}')
+    print(f'\tBest Valid Loss: {best_valid_loss:.3f}')
+
     writer.close()
 
 
