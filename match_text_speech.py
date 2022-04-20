@@ -18,10 +18,10 @@ def get_stt_result(r, fpath):
 
 def main():
 
-    DATA_PATH = '../data/'
+    DATA_PATH = './data/'
     WAV_PATH = os.path.join(DATA_PATH, 'wav')
     SCRIPT_PATH = os.path.join(DATA_PATH, 'scripts.xlsx')
-    LOG_PATH = '../logs/'
+    LOG_PATH = './logs/'
     THRESHOLD = 0.5
 
     logging.basicConfig(
