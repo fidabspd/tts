@@ -30,7 +30,7 @@ class MultiHeadAttentionLayer(nn.Module):
         inputs = inputs.view(batch_size, -1, self.n_heads, self.head_dim)
         # [batch_size, seq_len, n_heads, head_dim]
         splits = inputs.permute(0, 2, 1, 3)
-        return splits  # [batch_size, n_heads, seq_len, head_dim] -> n_heads를 앞으로
+        return splits  # [batch_size, n_heads, seq_len, head_dim]
 
     def scaled_dot_product_attention(self, query, key, value, mask):
         key_t = key.permute(0, 1, 3, 2)
@@ -41,16 +41,11 @@ class MultiHeadAttentionLayer(nn.Module):
         # for encd_attention: [batch_size, 1, 1, key_len(inp)]
         if mask is not None:
             mask = mask.to(self.device)
-            energy = energy.masked_fill(mask==0, -1e10)  # key에 masking
-            # `masked_fill`의 parameter로 받는 `mask==0`에 대해. 
-            # - `energy`와 shape의 차원의 개수가 달라도 괜찮다. `energy`와 `mask==0`의 차원 개수중 더 많은 차원의 개수를 가지도록 자동으로 맞춘다.
-            # - 각 차원의 len은 `energy`의 각 차원 len과 일치하거나 1이어야한다. (배수는 안된다.)
-        attention = torch.softmax(energy, axis=-1)  # axis=-1 은 key의 문장 위치
+            energy = energy.masked_fill(mask==0, -1e10)
+        attention = torch.softmax(energy, axis=-1)
         attention = self.dropout(attention)
-        # attention shape: [batch_size, n_heads, query_len, key_len(=value_len)]
-        # value shape: [batch_size, n_heads, value_len(=key_len), head_dim]
         x = torch.matmul(attention, value)  # [batch_size, n_heads, query_len, head_dim]
-        return x, attention  # attention 시각화에 쓸 수 있음
+        return x, attention
 
     def forward(self, query, key, value, mask=None):
 
@@ -70,7 +65,7 @@ class MultiHeadAttentionLayer(nn.Module):
 
         outputs = self.fc_o(x)
         
-        return outputs, attention  # [batch_size, query_len, hidden_dim]
+        return outputs, attention
 
 
 class PositionwiseFeedforwardLayer(nn.Module):
@@ -259,29 +254,18 @@ class Transformer(nn.Module):
 
     def create_padding_mask(self, key, for_speech=False):
 
-        def or_for_iter(it):
-            for i in it:
-                if i:
-                    return torch.BoolTensor([True])
-            return torch.BoolTensor([False])
-
         batch_size = key.shape[0]
         key_len = key.shape[1]
         if not for_speech:
-            mask = (key != self.pad_idx).unsqueeze(1).unsqueeze(2)
+            mask = key.ne(self.pad_idx).unsqueeze(1).unsqueeze(2)
         else:
-            speech_without_sos = key[..., 1:, :]
-            speech_not_pad_np = (speech_without_sos != self.pad_idx).detach().cpu().numpy()
-            speech_not_pad_np = np.apply_along_axis(or_for_iter, -1, speech_not_pad_np)
-            speech_with_sos = np.concatenate([
-                    np.array([True]*batch_size).reshape((batch_size, 1, 1)),
-                    speech_not_pad_np
-            ], axis=1)
-            mask = torch.BoolTensor(speech_with_sos).squeeze()\
-                    .unsqueeze(1).unsqueeze(2)
-            target_sub_mask = torch.tril(torch.ones((key_len, key_len))).bool()
+            mask = torch.max(key, axis=-1).values.ne(0)
+            for_sos = torch.tensor([True]).repeat(batch_size, 1).to(self.device)
+            mask = torch.concat([for_sos, mask[:, 1:]], axis=-1)
+            mask = mask.unsqueeze(1).unsqueeze(2)
+            target_sub_mask = torch.tril(torch.ones((key_len, key_len))).bool().to(self.device)
             mask = mask & target_sub_mask
-        return mask  # [batch_size, 1, 1, key_len]
+        return mask
 
     def forward(self, inp, tar):
         inp_mask = self.create_padding_mask(inp)
