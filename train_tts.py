@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import configs as cf
 from preprocess import *
-from transformer_torch import *
+from network import *
 
 
 class TextMelDataset(Dataset):
@@ -250,7 +250,7 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
         if epoch-best_epoch >= es_patience:
             print(f'\nBest Epoch: {best_epoch+1:02}')
             print(f'\tBest Train Loss: {best_train_loss:.3f}')
-            print(f'\tBest Validation Loss: {best_valid_loss:.3f}')
+            print(f'\tBest Valid Loss: {best_valid_loss:.3f}')
             break
     
     writer.close()
