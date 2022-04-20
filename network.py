@@ -252,12 +252,11 @@ class Transformer(nn.Module):
         self.pad_idx = pad_idx
 
     def create_padding_mask(self, key, for_speech=False):
-
-        batch_size = key.shape[0]
-        key_len = key.shape[1]
         if not for_speech:
             mask = key.ne(self.pad_idx).unsqueeze(1).unsqueeze(2)
         else:
+            batch_size = key.shape[0]
+            key_len = key.shape[1]
             mask = torch.max(key, axis=-1).values.ne(0)
             for_sos = torch.tensor([True]).repeat(batch_size, 1).to(self.device)
             mask = torch.concat([for_sos, mask[:, 1:]], axis=-1)
