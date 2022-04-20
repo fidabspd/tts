@@ -28,6 +28,7 @@ HOP_LENGTH = int(SR*FRAME_SHIFT)
 WIN_LENGTH = int(SR*FRAME_LENGTH)
 
 TRAINSET_RATIO = configs['trainset_ratio']
+DL_NUM_WORKERS = configs['dl_num_workers']
 BATCH_SIZE = configs['batch_size']
 LEARNING_RATE = configs['learning_rate']
 CLIP = configs['clip']

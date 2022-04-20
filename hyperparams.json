@@ -15,6 +15,7 @@
     "dropout_ratio": 0.2,
 
     "trainset_ratio": 0.85,
+    "dl_num_workers": 8,
     "batch_size": 8,
     "learning_rate": 5e-4,
     "clip": 1,

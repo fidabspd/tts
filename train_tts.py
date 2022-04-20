@@ -101,9 +101,10 @@ def collate_fn(batch):
     }
 
 
-def get_dl_by_ds(ds, batch_size, shuffle=False):
+def get_dl_by_ds(ds, batch_size, num_workers, shuffle=False):
     dl = DataLoader(
-        ds, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+        ds, batch_size=batch_size, shuffle=shuffle,
+        collate_fn=collate_fn, num_workers=num_workers)
     return dl
 
 
@@ -273,8 +274,8 @@ def main():
     train_ds, valid_ds = random_split(full_ds, [train_ds_len, valid_ds_len])
 
     # Set DataLoader
-    train_dl = get_dl_by_ds(train_ds, cf.BATCH_SIZE, shuffle=True)
-    valid_dl = get_dl_by_ds(valid_ds, cf.BATCH_SIZE, shuffle=False)
+    train_dl = get_dl_by_ds(train_ds, cf.BATCH_SIZE, cf.DL_NUM_WORKERS, shuffle=True)
+    valid_dl = get_dl_by_ds(valid_ds, cf.BATCH_SIZE, cf.DL_NUM_WORKERS, shuffle=False)
 
     # Set model
     transformer = Transformer(
