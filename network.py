@@ -143,6 +143,44 @@ class DecoderLayer(nn.Module):
         return outputs, attention  # [batch_size, query_len(tar), hidden_dim]
 
 
+class EncoderPrenet(nn.Module):
+
+    def __init__(self, n_layers, emb_size, hidden_dim, kernel_size=5, dropout_ratio=0.2):
+        super().__init__()
+        self.n_layers = n_layers
+        self.conv_layers = nn.ModuleList([
+                nn.Conv1d(
+                    emb_size, hidden_dim,
+                    kernel_size=kernel_size,
+                    padding=int(kernel_size/2)
+                )
+        ] + [
+                nn.Conv1d(
+                    hidden_dim, hidden_dim,
+                    kernel_size=kernel_size,
+                    padding=int(kernel_size/2)
+                )
+                for _ in range(n_layers-1)
+        ])
+        self.batch_norm_layers = nn.ModuleList([
+                nn.BatchNorm1d(hidden_dim)
+                for _ in range(n_layers)
+        ])
+        self.dropout = nn.Dropout(dropout_ratio)
+        self.projection = nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, token_embs):
+        token_embs = token_embs.permute(0, 2, 1)
+        for conv, batch_norm in zip(self.conv_layers, self.batch_norm_layers):
+            token_embs = conv(token_embs)
+            token_embs = batch_norm(token_embs)
+            token_embs = torch.relu(token_embs)
+            token_embs = self.dropout(token_embs)
+        token_embs = token_embs.permute(0, 2, 1)
+        outputs = self.projection(token_embs)
+        return outputs
+
+
 class Encoder(nn.Module):
 
     def __init__(self, input_dim, max_seq_len, hidden_dim, n_layers, n_heads, pf_dim,
@@ -153,6 +191,7 @@ class Encoder(nn.Module):
         self.scale = torch.sqrt(torch.FloatTensor([hidden_dim])).to(device)
 
         self.tok_emb = nn.Embedding(input_dim, hidden_dim)
+        self.encoder_prenet = EncoderPrenet(3, hidden_dim, hidden_dim)
         self.pos_emb = nn.Embedding(max_seq_len, hidden_dim)
 
         self.encd_stk = nn.ModuleList([
@@ -166,9 +205,11 @@ class Encoder(nn.Module):
         batch_size = x.shape[0]
         seq_len = x.shape[1]
 
-        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
+        x = self.tok_emb(x)
+        x = self.encoder_prenet(x)
 
-        emb = self.tok_emb(x) * self.scale + self.pos_emb(pos)
+        pos = torch.arange(0, seq_len).unsqueeze(0).repeat(batch_size, 1).to(self.device)
+        emb = x * self.scale + self.pos_emb(pos)
         outputs = self.dropout(emb)
 
         for layer in self.encd_stk:
@@ -179,7 +220,7 @@ class Encoder(nn.Module):
 
 class DecoderPrenet(nn.Module):
     
-    def __init__(self, n_mels, hidden_dim, dropout_ratio=0.3):
+    def __init__(self, n_mels, hidden_dim, dropout_ratio=0.2):
         super().__init__()
         self.fc_0 = nn.Linear(n_mels, hidden_dim//2)
         self.fc_1 = nn.Linear(hidden_dim//2, hidden_dim)
