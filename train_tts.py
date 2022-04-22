@@ -128,7 +128,7 @@ def count_parameters(model):
 
 def initialize_weights(m):
     if hasattr(m, 'weight') and m.weight.dim() > 1:
-        nn.init.xavier_uniform_(m.weight.data)
+        nn.init.kaiming_uniform_(m.weight.data)
 
 
 def tensor_dict_to_device(tensor_dict, device):
