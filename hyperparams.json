@@ -17,9 +17,9 @@
     "trainset_ratio": 0.85,
     "dl_num_workers": 8,
     "batch_size": 8,
-    "learning_rate": 5e-4,
+    "learning_rate": 1e-3,
     "clip": 1,
-    "n_epochs": 15,
+    "n_epochs": 100,
     "es_patience": 5,
 
     "sr": 22050,
