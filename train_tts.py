@@ -246,9 +246,13 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
             best_valid_loss = valid_loss
             torch.save(model, model_file_path)
 
-        # Early stop
-        if epoch-best_epoch >= es_patience:
-            break
+        # Check point
+        if (epoch+1)%10 == 0:
+            torch.save(model, f'./model/single_tts_checkpoint_{epoch}.pt')
+
+        # # Early stop
+        # if epoch-best_epoch >= es_patience:
+        #     break
     
     print(f'\nBest Epoch: {best_epoch+1:02}')
     print(f'\tBest Train Loss: {best_train_loss:.3f}')
