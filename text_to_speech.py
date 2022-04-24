@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import soundfile as sf
 import matplotlib.pyplot as plt
@@ -13,6 +14,7 @@ class TextToSpeech():
         self.transformer = transformer.to(device)
         self.transformer.eval()
         self.device = device
+        self.generated = False
 
     def tts(self, text):
         
@@ -40,15 +42,25 @@ class TextToSpeech():
         self.generated = True
         
         return mel_pred, attention
+
+    @staticmethod
+    def mel_to_wav(mel, denormalize=True):
+        if denormalize:
+            mel = (np.clip(mel, 0, 1) * cf.MAX_DB) - cf.MAX_DB + cf.REF_DB
+        wav = librosa.feature.inverse.mel_to_audio(
+            mel, sr=cf.SR, hop_length=cf.HOP_LENGTH, win_length=cf.WIN_LENGTH)
+        return wav
     
+    @staticmethod
+    def save_wav(wav, save_file_path):
+        sf.write(save_file_path, wav, cf.SR)
+        print(f'Saved wav!\npath: {save_file_path}')
+
     def save_tts_result(self, save_file_path):
         if not self.generated:
             raise Exception('Call `tts` first')
-        inversed = librosa.feature.inverse.mel_to_audio(
-            self.mel_pred.T, sr=cf.SR, hop_length=cf.HOP_LENGTH, win_length=cf.WIN_LENGTH)
-        
-        sf.write(save_file_path, inversed, cf.SR)
-        print(f'Saved tts result!\npath: {save_file_path}')
+        wav = self.mel_to_wav(self.mel_pred.T)
+        self.save_wav(wav, save_file_path)
 
     def plot_attention_weights(self, draw_mean=False):
         if not self.generated:

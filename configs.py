@@ -19,6 +19,9 @@ N_HEADS = configs['n_heads']
 PF_DIM = configs['pf_dim']
 DROPOUT_RATIO = configs['dropout_ratio']
 
+REF_DB = configs['ref_db']
+MAX_DB = configs['max_db']
+
 SR = configs['sr']
 FRAME_SHIFT = configs['frame_shift']
 FRAME_LENGTH = configs['frame_length']

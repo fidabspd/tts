@@ -171,5 +171,8 @@ def get_mel(fpath, sr, n_mels, n_fft, hop_length, win_length):
     mel = librosa.feature.melspectrogram(
         y=y, n_mels=n_mels, n_fft=n_fft,
         hop_length=hop_length, win_length=win_length)
+
+    # Normalize
+    mel = np.clip((mel - cf.REF_DB + cf.MAX_DB) / cf.MAX_DB, 0.8, 1)
     
     return mel.T.astype(np.float32)
