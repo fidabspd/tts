@@ -22,6 +22,9 @@
     "n_epochs": 100,
     "es_patience": 5,
 
+    "ref_db": 100,
+    "max_db": 20,
+
     "sr": 22050,
     "frame_shift": 0.0125,
     "frame_length": 0.05,
