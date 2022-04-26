@@ -248,7 +248,7 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
 
         # Check point
         if (epoch+1)%10 == 0:
-            torch.save(model, f'./model/single_tts_checkpoint_{epoch}.pt')
+            torch.save(model, f'./model/single_speaker_tts_checkpoint_{epoch+1}.pt')
 
         # # Early stop
         # if epoch-best_epoch >= es_patience:

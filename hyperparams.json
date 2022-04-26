@@ -3,7 +3,7 @@
     "speaker": "여1",
     "script_file_name": "./data/scripts.xlsx",
     "graph_log_path": "./logs/graph/",
-    "model_file_path": "./model/single_speaker_tts.pt",
+    "model_file_path": "./model/single_speaker_tts_best.pt",
     "train_log_path": "./logs/train_logs/",
 
     "text_seq_len": 2000,
