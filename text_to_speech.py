@@ -46,7 +46,8 @@ class TextToSpeech():
     @staticmethod
     def mel_to_wav(mel, denormalize=True):
         if denormalize:
-            mel = (np.clip(mel, 0, 1) * cf.MAX_DB) - cf.MAX_DB + cf.REF_DB
+            # mel = (np.clip(mel, 0, 1) * cf.MAX_DB) - cf.MAX_DB + cf.REF_DB
+            mel *= cf.MEL_SCALE
         wav = librosa.feature.inverse.mel_to_audio(
             mel, sr=cf.SR, hop_length=cf.HOP_LENGTH, win_length=cf.WIN_LENGTH)
         return wav

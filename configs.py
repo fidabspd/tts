@@ -21,6 +21,7 @@ DROPOUT_RATIO = configs['dropout_ratio']
 
 REF_DB = configs['ref_db']
 MAX_DB = configs['max_db']
+MEL_SCALE = configs['mel_scale']
 
 SR = configs['sr']
 FRAME_SHIFT = configs['frame_shift']

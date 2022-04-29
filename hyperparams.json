@@ -6,8 +6,8 @@
     "model_file_path": "./model/single_speaker_tts_best.pt",
     "train_log_path": "./logs/train_logs/",
 
-    "text_seq_len": 2000,
-    "speech_seq_len": 2000,
+    "text_seq_len": 200,
+    "speech_seq_len": 1100,
     "n_layers": 3,
     "hidden_dim": 256,
     "n_heads": 8,
@@ -24,6 +24,7 @@
 
     "ref_db": 100,
     "max_db": 20,
+    "mel_scale": 2110,
 
     "sr": 22050,
     "frame_shift": 0.0125,
