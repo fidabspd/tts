@@ -99,7 +99,7 @@ class EncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout_ratio)
 
     def forward(self, inputs, mask=None):
-        attn_outputs, _ = self.self_attention(inputs, inputs, inputs, mask)
+        attn_outputs, enc_attention = self.self_attention(inputs, inputs, inputs, mask)
         attn_outputs = self.dropout(attn_outputs)
         attn_outputs = self.self_attn_norm(inputs+attn_outputs)  # residual connection
 
@@ -107,7 +107,7 @@ class EncoderLayer(nn.Module):
         ff_outputs = self.dropout(ff_outputs)
         ff_outputs = self.pos_ff_norm(attn_outputs+ff_outputs)  # residual connection
 
-        return ff_outputs  # [batch_size, query_len(inp), hidden_dim]
+        return ff_outputs, enc_attention  # [batch_size, query_len(inp), hidden_dim]
 
 
 class DecoderLayer(nn.Module):
@@ -125,7 +125,7 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout_ratio)
 
     def forward(self, target, encd, target_mask, encd_mask):
-        self_attn_outputs, _ = self.self_attention(target, target, target, target_mask)
+        self_attn_outputs, dec_attention = self.self_attention(target, target, target, target_mask)
         self_attn_outputs = self.dropout(self_attn_outputs)
         self_attn_outputs = self.self_attn_norm(target+self_attn_outputs)
         
@@ -140,7 +140,7 @@ class DecoderLayer(nn.Module):
         outputs = self.dropout(outputs)
         outputs = self.pos_ff_norm(encd_attn_outputs+outputs)
 
-        return outputs, attention  # [batch_size, query_len(tar), hidden_dim]
+        return outputs, dec_attention, attention  # [batch_size, query_len(tar), hidden_dim]
 
 
 class EncoderPrenet(nn.Module):
@@ -213,9 +213,9 @@ class Encoder(nn.Module):
         outputs = self.dropout(emb)
 
         for layer in self.encd_stk:
-            outputs = layer(outputs, mask)
+            outputs, enc_attention = layer(outputs, mask)
 
-        return outputs
+        return outputs, enc_attention
 
 
 class DecoderPrenet(nn.Module):
@@ -265,12 +265,12 @@ class MelDecoder(nn.Module):
         outputs = self.dropout(emb)
 
         for layer in self.decd_stk:
-            outputs, attention = layer(outputs, encd, target_mask, encd_mask)
+            outputs, dec_attention, attention = layer(outputs, encd, target_mask, encd_mask)
 
         mel_outputs = self.mel_linear(outputs)
         stop_prob = torch.sigmoid(self.stop_linear(outputs))
 
-        return mel_outputs, stop_prob, attention
+        return mel_outputs, stop_prob, dec_attention, attention
         
 
 class Transformer(nn.Module):
@@ -310,7 +310,7 @@ class Transformer(nn.Module):
         inp_mask = self.create_padding_mask(inp)
         tar_mask = self.create_padding_mask(tar, True)
 
-        enc_inp = self.encoder(inp, inp_mask)
-        mel_outputs, stop_prob, attention = self.decoder(tar, enc_inp, tar_mask, inp_mask)
+        enc_inp, enc_attention = self.encoder(inp, inp_mask)
+        mel_outputs, stop_prob, dec_attention, attention = self.decoder(tar, enc_inp, tar_mask, inp_mask)
 
-        return mel_outputs, stop_prob, attention
+        return mel_outputs, stop_prob, enc_attention, dec_attention, attention

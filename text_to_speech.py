@@ -32,16 +32,19 @@ class TextToSpeech():
                 mel_input = torch.concat((mel_sos, mel_pred[:, :i+1, :]), axis=1)
             mel_mask = self.transformer.create_padding_mask(mel_input, True)
             with torch.no_grad():
-                mel_pred, _, attention = self.transformer.decoder(
+                mel_pred, _, _, _, _
+                mel_pred, _, enc_attention, dec_attention, attention = self.transformer.decoder(
                     mel_input, text_encd, mel_mask, text_tokens_mask)
         
         self.text = text
         self.text_tokens = text_tokens.detach().cpu().numpy()
         self.mel_pred = mel_pred[0].detach().cpu().numpy()
+        self.enc_attention = enc_attention
+        self.dec_attention = dec_attention
         self.attention = attention
         self.generated = True
         
-        return mel_pred, attention
+        return mel_pred, enc_attention, dec_attention, attention
 
     @staticmethod
     def mel_to_wav(mel, denormalize=True):
@@ -63,11 +66,18 @@ class TextToSpeech():
         wav = self.mel_to_wav(self.mel_pred.T)
         self.save_wav(wav, save_file_path)
 
-    def plot_attention_weights(self, draw_mean=False):
+    def plot_attention_weights(self, attention_pos='enc_dec', draw_mean=False):
         if not self.generated:
             raise Exception('Call `tts` first')
 
-        attention = self.attention.squeeze(0)
+        if attention_pos == 'enc_dec':
+            attention = self.attention
+        elif attention_pos == 'enc':
+            attention = self.enc_attention
+        elif attention_pos == 'dec':
+            attention = self.dec_attention
+
+        attention = attention.squeeze(0)
         if draw_mean:
             attention = torch.mean(attention, dim=0, keepdim=True)
         attention = attention.cpu().detach().numpy()
