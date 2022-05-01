@@ -22,7 +22,7 @@ class TextToSpeech():
         text_tokens = torch.LongTensor(text_tokens).unsqueeze(0).to(self.device)
         text_tokens_mask = self.transformer.create_padding_mask(text_tokens)
         with torch.no_grad():
-            text_encd = self.transformer.encoder(text_tokens, text_tokens_mask)
+            text_encd, enc_attention = self.transformer.encoder(text_tokens, text_tokens_mask)
 
         mel_sos = torch.zeros([1, cf.N_MELS]).unsqueeze(0).to(self.device)
         for i in range(self.transformer.speech_seq_len):
@@ -32,7 +32,7 @@ class TextToSpeech():
                 mel_input = torch.concat((mel_sos, mel_pred[:, :i+1, :]), axis=1)
             mel_mask = self.transformer.create_padding_mask(mel_input, True)
             with torch.no_grad():
-                mel_pred, _, enc_attention, dec_attention, attention = self.transformer.decoder(
+                mel_pred, _, dec_attention, attention = self.transformer.decoder(
                     mel_input, text_encd, mel_mask, text_tokens_mask)
         
         self.text = text
