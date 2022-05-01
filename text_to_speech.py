@@ -32,7 +32,6 @@ class TextToSpeech():
                 mel_input = torch.concat((mel_sos, mel_pred[:, :i+1, :]), axis=1)
             mel_mask = self.transformer.create_padding_mask(mel_input, True)
             with torch.no_grad():
-                mel_pred, _, _, _, _
                 mel_pred, _, enc_attention, dec_attention, attention = self.transformer.decoder(
                     mel_input, text_encd, mel_mask, text_tokens_mask)
         
