@@ -42,9 +42,11 @@ class MultiHeadAttentionLayer(nn.Module):
             mask = mask.to(self.device)
             energy = energy.masked_fill(mask==0, -1e10)
         attention = torch.softmax(energy, axis=-1)
+        print(f'query: {query.shape}\n{query[0][0]}\n\nkey: {key.shape}\n{key[0][0]}\n\nenergy: {energy.shape}\n{energy[0][0]}\n\nattention: {attention.shape}\n{attention[0][0]}\n\n')
+
         attention = self.dropout(attention)
         x = torch.matmul(attention, value)  # [batch_size, n_heads, query_len, head_dim]
-        return x, attention
+        return x, attention, energy
 
     def forward(self, query, key, value, mask=None):
 
@@ -58,13 +60,13 @@ class MultiHeadAttentionLayer(nn.Module):
         key = self.split_heads(key, batch_size)
         value = self.split_heads(value, batch_size)
 
-        x, attention = self.scaled_dot_product_attention(query, key, value, mask)
+        x, attention, energy = self.scaled_dot_product_attention(query, key, value, mask)
         x = x.permute(0, 2, 1, 3).contiguous()  # [batch_size, query_len, n_heads, head_dim]
         x = x.view(batch_size, -1, self.hidden_dim)  # [batch_size, query_len, hidden_dim]
 
         outputs = self.fc_o(x)
         
-        return outputs, attention
+        return outputs, attention, energy
 
 
 class PositionwiseFeedforwardLayer(nn.Module):
@@ -99,7 +101,7 @@ class EncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout_ratio)
 
     def forward(self, inputs, mask=None):
-        attn_outputs, enc_attention = self.self_attention(inputs, inputs, inputs, mask)
+        attn_outputs, enc_attention, enc_energy = self.self_attention(inputs, inputs, inputs, mask)
         attn_outputs = self.dropout(attn_outputs)
         attn_outputs = self.self_attn_norm(inputs+attn_outputs)  # residual connection
 
@@ -107,7 +109,7 @@ class EncoderLayer(nn.Module):
         ff_outputs = self.dropout(ff_outputs)
         ff_outputs = self.pos_ff_norm(attn_outputs+ff_outputs)  # residual connection
 
-        return ff_outputs, enc_attention  # [batch_size, query_len(inp), hidden_dim]
+        return ff_outputs, enc_attention, enc_energy  # [batch_size, query_len(inp), hidden_dim]
 
 
 class DecoderLayer(nn.Module):
@@ -125,14 +127,14 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout_ratio)
 
     def forward(self, target, encd, target_mask, encd_mask):
-        self_attn_outputs, dec_attention = self.self_attention(target, target, target, target_mask)
+        self_attn_outputs, dec_attention, dec_energy = self.self_attention(target, target, target, target_mask)
         self_attn_outputs = self.dropout(self_attn_outputs)
         self_attn_outputs = self.self_attn_norm(target+self_attn_outputs)
         
         # self_attn_outputs shape: [batch_size, query_len(tar), hidden_dim]
         # encd shape: [batch_size, query_len(inp), hidden_dim]
         # new_query_len = query_len(tar); new_key_len(=new_val_len) = query_len(inp)
-        encd_attn_outputs, attention = self.encd_attention(self_attn_outputs, encd, encd, encd_mask)
+        encd_attn_outputs, attention, enc_dec_energy = self.encd_attention(self_attn_outputs, encd, encd, encd_mask)
         encd_attn_outputs = self.dropout(encd_attn_outputs)
         encd_attn_outputs = self.encd_attn_norm(self_attn_outputs+encd_attn_outputs)
 
@@ -140,7 +142,7 @@ class DecoderLayer(nn.Module):
         outputs = self.dropout(outputs)
         outputs = self.pos_ff_norm(encd_attn_outputs+outputs)
 
-        return outputs, dec_attention, attention  # [batch_size, query_len(tar), hidden_dim]
+        return outputs, dec_attention, attention, dec_energy, enc_dec_energy  # [batch_size, query_len(tar), hidden_dim]
 
 
 class EncoderPrenet(nn.Module):
@@ -213,9 +215,9 @@ class Encoder(nn.Module):
         outputs = self.dropout(emb)
 
         for layer in self.encd_stk:
-            outputs, enc_attention = layer(outputs, mask)
+            outputs, enc_attention, enc_energy = layer(outputs, mask)
 
-        return outputs, enc_attention
+        return outputs, enc_attention, enc_energy
 
 
 class DecoderPrenet(nn.Module):
@@ -265,12 +267,12 @@ class MelDecoder(nn.Module):
         outputs = self.dropout(emb)
 
         for layer in self.decd_stk:
-            outputs, dec_attention, attention = layer(outputs, encd, target_mask, encd_mask)
+            outputs, dec_attention, attention, dec_energy, enc_dec_energy = layer(outputs, encd, target_mask, encd_mask)
 
         mel_outputs = self.mel_linear(outputs)
         stop_prob = torch.sigmoid(self.stop_linear(outputs))
 
-        return mel_outputs, stop_prob, dec_attention, attention
+        return mel_outputs, stop_prob, dec_attention, attention, dec_energy, enc_dec_energy
         
 
 class Transformer(nn.Module):
@@ -310,7 +312,7 @@ class Transformer(nn.Module):
         inp_mask = self.create_padding_mask(inp)
         tar_mask = self.create_padding_mask(tar, True)
 
-        enc_inp, enc_attention = self.encoder(inp, inp_mask)
-        mel_outputs, stop_prob, dec_attention, attention = self.decoder(tar, enc_inp, tar_mask, inp_mask)
+        enc_inp, enc_attention, enc_energy = self.encoder(inp, inp_mask)
+        mel_outputs, stop_prob, dec_attention, attention, dec_energy, enc_dec_energy = self.decoder(tar, enc_inp, tar_mask, inp_mask)
 
-        return mel_outputs, stop_prob, enc_attention, dec_attention, attention
+        return mel_outputs, stop_prob, enc_attention, dec_attention, attention, enc_energy, dec_energy, enc_dec_energy
