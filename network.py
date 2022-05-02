@@ -214,8 +214,10 @@ class Encoder(nn.Module):
         emb = x * self.scale + self.pos_emb(pos)
         outputs = self.dropout(emb)
 
+        enc_attention = []
         for layer in self.encd_stk:
-            outputs, enc_attention, enc_energy = layer(outputs, mask)
+            outputs, enc_attention_tmp, enc_energy = layer(outputs, mask)
+            enc_attention.append(enc_attention_tmp)
 
         return outputs, enc_attention, enc_energy
 
@@ -266,8 +268,12 @@ class MelDecoder(nn.Module):
         emb = self.decoder_prenet(target) * self.scale + self.pos_emb(pos)
         outputs = self.dropout(emb)
 
+        dec_attention = []
+        attention = []
         for layer in self.decd_stk:
-            outputs, dec_attention, attention, dec_energy, enc_dec_energy = layer(outputs, encd, target_mask, encd_mask)
+            outputs, dec_attention_tmp, attention_tmp, dec_energy, enc_dec_energy = layer(outputs, encd, target_mask, encd_mask)
+            dec_attention.append(dec_attention_tmp)
+            attention.append(attention_tmp)
 
         mel_outputs = self.mel_linear(outputs)
         stop_prob = torch.sigmoid(self.stop_linear(outputs))
