@@ -159,7 +159,7 @@ def evaluate(model, dl, criterion, device):
             text_tokens, mel = batch['text_tokens'], batch['mel']
             n_processed_data += len(mel)
             
-            mel_pred, _, _, _, _ = model(text_tokens, mel[:,:-1])
+            mel_pred, _, _, _, _, _, _, _ = model(text_tokens, mel[:,:-1])
             mel_pred = mel_pred.contiguous().view(-1)
             mel = mel[:,1:].contiguous().view(-1)
             loss = criterion(mel_pred, mel)
@@ -192,7 +192,7 @@ def train_model(model, train_dl, valid_dl, optimizer, criterion, n_epochs,
             now_batch_len = len(mel)
             n_processed_data += now_batch_len
 
-            mel_pred, _, _, _, _ = model(text_tokens, mel[:,:-1])
+            mel_pred, _, _, _, _, _, _, _ = model(text_tokens, mel[:,:-1])
             mel_pred = mel_pred.contiguous().view(-1)
             mel = mel[:,1:].contiguous().view(-1)
             loss = criterion(mel_pred, mel)
